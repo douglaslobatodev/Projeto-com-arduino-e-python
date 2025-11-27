@@ -11,6 +11,7 @@ import {
   BarElement,
   TimeScale,
 } from "chart.js";
+import { getMotivoColor } from "../utils/motivoColors";
 
 ChartJS.register(
   ArcElement,
@@ -47,7 +48,7 @@ export default function Charts({
   const chartRef = useRef(null);
 
   const pieData = useMemo(() => {
-    // Se backend mandou pie { labels, data }, usamos ele
+    // Usando dados vindos do backend
     if (
       pieDataFromApi &&
       Array.isArray(pieDataFromApi.labels) &&
@@ -55,15 +56,16 @@ export default function Charts({
     ) {
       const labels = pieDataFromApi.labels;
       const data = pieDataFromApi.data;
+
+      const backgroundColor = labels.map((label) => getMotivoColor(label));
+
       return {
         labels,
         datasets: [
           {
             label: "Motivos",
             data,
-            backgroundColor: labels.map(
-              (_, i) => `hsl(${(i * 60) % 360} 70% 50%)`
-            ),
+            backgroundColor,
           },
         ],
       };
@@ -77,22 +79,21 @@ export default function Charts({
     });
     const labels = Object.keys(counts);
     const data = labels.map((l) => counts[l]);
+    const backgroundColor = labels.map((label) => getMotivoColor(label));
+
     return {
       labels,
       datasets: [
         {
           label: "Motivos",
           data,
-          backgroundColor: labels.map(
-            (_, i) => `hsl(${(i * 60) % 360} 70% 50%)`
-          ),
+          backgroundColor,
         },
       ],
     };
   }, [stops, pieDataFromApi]);
 
   const barData = useMemo(() => {
-    // Se backend mandou bar { labels, data }, usamos ele
     if (
       barDataFromApi &&
       Array.isArray(barDataFromApi.labels) &&
@@ -110,7 +111,6 @@ export default function Charts({
       };
     }
 
-    // FALLBACK: últimas 10 paradas
     const last = [...stops].slice(-10);
     const labels = last.map((s) => {
       const t = new Date(s.start_time || s.start || s.timestamp || Date.now());

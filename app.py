@@ -59,6 +59,8 @@ MOTIVO_MAP = {
     "SETUP": "Setup",
     "MATERIAL": "Falta de Material",
     "MANUTENCAO": "Manutenção",
+    "ALMOCO": "Almoço/Intervalo",
+    "ALMOÇO": "Almoço/Intervalo",
     "SEM_MOTIVO": "Sem motivo",
     "NONE": "Sem motivo",
 }
@@ -69,6 +71,15 @@ def traduz_motivo_bruto(motivo_bruto: str) -> str:
         return "Sem motivo"
     motivo_bruto = motivo_bruto.upper()
     return MOTIVO_MAP.get(motivo_bruto, motivo_bruto)
+
+
+# =====================================================================
+# ESTADO ATUAL DAS MÁQUINAS (LED)
+# =====================================================================
+
+# Guarda o último estadoLed recebido por máquina
+# 0 = verde (rodando), 1 = vermelho (parada), 2 = off (desligada)
+machine_states = {}  # ex: {"Máquina 01": 0}
 
 
 # =====================================================================
@@ -176,35 +187,23 @@ def fechar_parada_auto(machine: str, fim: datetime, threshold_minutos: float = 0
     cur.close()
     conn.close()
 
-def processar_run_cycle(machine, estado_led, agora):
-    THRESHOLD = 0.1
 
-    # LED VERDE → máquina rodando
-    if estado_led == 0:
-        print("[INFO] Máquina rodando (verde). Fechando qualquer parada automática.")
-        fechar_parada_auto(machine, agora, threshold_minutos=THRESHOLD)
-        return
+def obter_agora_do_log(dado: dict) -> datetime:
+    """
+    Tenta usar data_hora enviada pelo Arduino.
+    Formato esperado: 'YYYY-MM-DD HH:MM:SS' (hora local Brasil).
+    Se não vier ou der erro, cai num fallback.
+    """
+    s = dado.get("data_hora")
+    if s:
+        try:
+            # Hora local que o Arduino já calculou via NTP
+            return datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
+        except Exception as e:
+            print("[WARN] data_hora inválido no log, usando fallback:", s, e)
 
-    # LED VERMELHO → máquina parada (sem motivo se nenhum botão estiver ligado)
-    if estado_led == 1:
-        print("[INFO] Máquina parada (vermelho). Abrindo parada automática SEM MOTIVO se não tiver nenhuma.")
-        parada = obter_parada_aberta(machine)
-        if parada:
-            # Já existe parada (talvez de motivo) → não abre outra
-            return
-
-        # Abre parada “Sem motivo”
-        abrir_parada_auto(machine, "NONE", agora)
-        return
-
-    # LED DESLIGADO → máquina desligada (não conta, só fecha)
-    if estado_led == 2:
-        print("[INFO] Máquina desligada. Fechando QUALQUER parada.")
-        fechar_parada_auto(machine, agora, threshold_minutos=THRESHOLD)
-        return
-
-    # Qualquer outro valor estranho
-    print(f"[INFO] estado_led inválido ou ausente: {estado_led}")
+    # Fallback: UTC-3 (aprox. Belém), coerente com ajuste do Arduino
+    return datetime.utcnow() - timedelta(hours=3)
 
 
 # =====================================================================
@@ -213,91 +212,86 @@ def processar_run_cycle(machine, estado_led, agora):
 
 @app.route("/log", methods=["POST"])
 def receber_log():
+    # Tenta ler o JSON
     try:
         dado = request.get_json(force=True)
     except Exception as e:
         print("[ERRO] JSON inválido:", e)
         return jsonify({"status": "erro", "msg": "JSON inválido"}), 400
 
-    print("\n=== LOG RECEBIDO DO ARDUINO ===")
+    print("\n=== LOG DO ARDUINO ===")
     print(json.dumps(dado, indent=2, ensure_ascii=False))
-    print("================================\n")
+    print("=======================\n")
 
     machine = dado.get("machine") or "Máquina 01"
     tipo = (dado.get("tipo") or "").upper()
     motivo_bruto = (dado.get("motivo") or "NONE").upper()
     estado_led = dado.get("estadoLed")
-    agora = datetime.utcnow()
-    THRESHOLD_MINUTOS = 0.1
+    agora = obter_agora_do_log(dado)
 
-    # ---------------------------------------------------------
-    # 1) RUN_CYCLE → cuida do LED RUN (verde/vermelho/off)
-    # ---------------------------------------------------------
-    if tipo == "RUN_CYCLE":
-        processar_run_cycle(machine, estado_led, agora)
+    # Se vier sem estadoLed, não quebremos a API
+    if estado_led is None:
+        print("[WARN] Log sem estadoLed, ignorando para contagem.")
         return jsonify({"status": "ok"}), 200
 
-    # ---------------------------------------------------------
-    # 2) MOTIVO → só vale se LED estiver VERMELHO (1)
-    # ---------------------------------------------------------
-    if tipo == "MOTIVO":
-        # Se não estiver vermelho, ignora (máquina rodando ou desligada)
-        if estado_led != 1:
-            print(
-                f"[INFO] MOTIVO recebido ({motivo_bruto}) mas LED_RUN "
-                f"não está vermelho (estadoLed={estado_led}). "
-                "Ignorando atualização de motivo."
-            )
-            return jsonify({"status": "ok"}), 200
+    # Atualiza o último estado conhecido da máquina
+    machine_states[machine] = estado_led
 
-        # Pega parada AUTO aberta (se tiver)
-        parada_aberta = obter_parada_aberta(machine)  # (id, reason, start_time) ou None
-
-        # BOTÃO DESLIGADO → motivo volta para NONE → fecha parada
-        if motivo_bruto == "NONE":
-            if not parada_aberta:
-                print(
-                    f"[INFO] MOTIVO=NONE recebido, mas não há parada aberta "
-                    f"para {machine}. Nada a fechar."
-                )
-                return jsonify({"status": "ok"}), 200
-
-            print(f"[INFO] MOTIVO=NONE recebido. Fechando parada aberta de {machine}.")
-            fechar_parada_auto(machine, agora, threshold_minutos=THRESHOLD_MINUTOS)
-            return jsonify({"status": "ok"}), 200
-
-        # BOTÃO LIGADO (SETUP / MATERIAL / MANUTENCAO)
-        motivo_humano_novo = traduz_motivo_bruto(motivo_bruto)
-
-        if not parada_aberta:
-            # Não tinha parada aberta → abre com esse motivo
-            abrir_parada_auto(machine, motivo_bruto, agora)
-            return jsonify({"status": "ok"}), 200
-
-        parada_id, reason_open, start_time = parada_aberta
-
-        if reason_open == motivo_humano_novo:
-            # Mesmo motivo já está contando
-            print(
-                f"[INFO] MOTIVO={motivo_humano_novo} recebido, mas já existe parada "
-                f"aberta com o mesmo motivo para {machine}. Mantendo contagem."
-            )
-            return jsonify({"status": "ok"}), 200
-
-        # Motivo mudou (ex: Setup -> Manutenção)
-        print(
-            f"[INFO] Mudança de motivo em {machine}: {reason_open} -> {motivo_humano_novo}. "
-            "Fechando parada anterior e abrindo nova."
-        )
-        fechar_parada_auto(machine, agora, threshold_minutos=THRESHOLD_MINUTOS)
-        abrir_parada_auto(machine, motivo_bruto, agora)
+    # =====================================================================
+    # 1) LED VERDE → máquina EM FUNCIONAMENTO → fechar qualquer parada
+    # =====================================================================
+    if estado_led == 0:
+        print("[LED VERDE] Máquina em funcionamento → fechar parada automática, se existir.")
+        fechar_parada_auto(machine, agora)
         return jsonify({"status": "ok"}), 200
 
-    # ---------------------------------------------------------
-    # 3) Outros tipos → só loga e ignora para contagem
-    # ---------------------------------------------------------
-    print(f"[INFO] Log tipo={tipo} ignorado para contagem de paradas.")
+    # =====================================================================
+    # 2) LED DESLIGADO → máquina DESLIGADA → fechar parada e não contar
+    # =====================================================================
+    if estado_led == 2:
+        print("[LED OFF] Sistema desligado → fechar parada automática, se existir.")
+        fechar_parada_auto(machine, agora)
+        return jsonify({"status": "ok"}), 200
+
+    # =====================================================================
+    # 3) LED VERMELHO (1) → máquina PARADA
+    #    - se não tiver parada aberta, abre uma "sem motivo"
+    #    - se for log de MOTIVO, atualiza reason da parada aberta
+    # =====================================================================
+    if estado_led == 1:
+        # Garante que existe uma parada aberta
+        parada = obter_parada_aberta(machine)
+        if not parada:
+            print("[LED VERMELHO] Nenhuma parada aberta. Abrindo parada sem motivo (NONE).")
+            abrir_parada_auto(machine, "NONE", agora)
+
+        # Se o tipo do log é MOTIVO, atualiza o motivo da parada
+        if tipo == "MOTIVO":
+            motivo_humano = traduz_motivo_bruto(motivo_bruto)
+            print(f"[MOTIVO] Atualizando motivo da parada para {motivo_humano}.")
+
+            conn = conectar_pg()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                UPDATE paradas
+                SET reason = %s
+                WHERE machine = %s
+                  AND origem = 'AUTO'
+                  AND end_time IS NULL
+                """,
+                (motivo_humano, machine),
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+
+        return jsonify({"status": "ok"}), 200
+
+    # Se vier algum valor de estado_led que não conhecemos
+    print(f"[WARN] estadoLed inesperado: {estado_led}. Ignorando para contagem.")
     return jsonify({"status": "ok"}), 200
+
 
 # =====================================================================
 # CONSULTAR ÚLTIMAS PARADAS (/ultimos) - agora em cima de paradas
@@ -371,6 +365,26 @@ reasons = ["Setup", "Falta de Material", "Manutenção", "Almoço/Intervalo", "S
 
 
 def gerar_payload_dashboard():
+    # ---------------------------------------------------------
+    # 1) Máquinas ativas / inativas AGORA, usando estadoLed:
+    #    - 0 (verde)   => ativa
+    #    - 1 (vermelho)=> inativa
+    #    - 2 / None    => ignorada (desligada)
+    # ---------------------------------------------------------
+    active_machines = 0
+    inactive_machines = 0
+
+    for m in machines:
+        estado = machine_states.get(m)
+        if estado == 0:
+            active_machines += 1
+        elif estado == 1:
+            inactive_machines += 1
+        # 2 ou None: não soma em nenhum
+
+    # ---------------------------------------------------------
+    # 2) Carrega histórico de PARADAS FECHADAS para gráficos
+    # ---------------------------------------------------------
     conn = conectar_pg()
     cur = conn.cursor()
     cur.execute(
@@ -399,6 +413,7 @@ def gerar_payload_dashboard():
             }
         )
 
+    # Se ainda não há paradas, mesmo assim devolve status de máquina
     if not history:
         return {
             "cards": {
@@ -406,11 +421,17 @@ def gerar_payload_dashboard():
                 "totalDowntime": 0,
                 "avgDowntime": 0,
                 "mostCommonReason": "N/A",
+                "activeMachines": active_machines,
+                "inactiveMachines": inactive_machines,
             },
             "pie": {"labels": [], "data": []},
             "bar": {"labels": machines, "data": [0 for _ in machines]},
             "history": [],
             "stops": [],
+            "machineStatus": {
+                "active": active_machines,
+                "inactive": inactive_machines,
+            },
         }
 
     total_stops = len(history)
@@ -445,11 +466,17 @@ def gerar_payload_dashboard():
             "totalDowntime": round(total_downtime, 2),
             "avgDowntime": round(avg_downtime, 2),
             "mostCommonReason": top_reason,
+            "activeMachines": active_machines,
+            "inactiveMachines": inactive_machines,
         },
         "pie": {"labels": pie_labels, "data": pie_data},
         "bar": {"labels": bar_labels, "data": bar_data},
         "history": latest_history,
         "stops": history,
+        "machineStatus": {
+            "active": active_machines,
+            "inactive": inactive_machines,
+        },
     }
 
 

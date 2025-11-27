@@ -1,5 +1,5 @@
 // ============================================================================
-// REGISTRO DE PARADAS MARONI - VERSÃO FINAL (TRAVA VISUAL NO OFF)
+// REGISTRO DE PARADAS MARONI - VERSÃO NTP (SEM HARDWARE EXTRA)
 // ============================================================================
 
 #define LIGADO    LOW
@@ -8,6 +8,8 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <Ethernet.h>
+#include <EthernetUdp.h>
+#include <NTPClient.h>
 #include <string.h>
 
 // ---------------------- PINOS ----------------------
@@ -23,6 +25,11 @@ const int LED_MAN   = 9;
 const int LED_RUN_G  = A0;
 const int LED_STOP_R = A1;
 
+// ---------------------- NTP (HORA VIA INTERNET) ----------------------
+// Usa offset -10800 (Brasil -3h) direto no NTPClient
+EthernetUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org", -10800, 60000);
+
 // ---------------------- ESTADO ----------------------
 bool maquinaRodando = false;
 bool latchSETUP = false;
@@ -34,10 +41,10 @@ String motivo = "NONE";
 // ---------------------- DEBOUNCE ----------------------
 const unsigned long DEBOUNCE_MS = 30;
 
-bool lastRUN  = HIGH;
+bool lastRUN   = HIGH;
 bool lastSETUP = HIGH;
-bool lastMAT  = HIGH;
-bool lastMAN  = HIGH;
+bool lastMAT   = HIGH;
+bool lastMAN   = HIGH;
 
 unsigned long tRUN   = 0;
 unsigned long tSETUP = 0;
@@ -50,10 +57,7 @@ bool lockMAT   = false;
 bool lockMAN   = false;
 
 // ---------------------- CICLO DO LED RUN/STOP ----------------------
-// 0 = VERDE (Rodando)
-// 1 = VERMELHO (Parado)
-// 2 = DESLIGADO (Sistema Off)
-byte estadoLedRun = 2;
+byte estadoLedRun = 2; // 0=verde, 1=vermelho, 2=desligado
 
 // ---------------------- ETHERNET ----------------------
 byte MAC_ADDR[] = {0xDE,0xAD,0xBE,0xEF,0xFE,0x01};
@@ -62,7 +66,7 @@ IPAddress DNS_STATIC(192,168,1,1);
 IPAddress GW_STATIC(192,168,1,1);
 IPAddress MASK_STATIC(255,255,255,0);
 
-// Servidor Python + Firebase
+// Servidor Python
 IPAddress SERVER_IP(192,168,1,129);
 const uint16_t SERVER_PORT = 5000;
 const char* SERVER_PATH = "/log";
@@ -74,15 +78,15 @@ bool redeOk = false;
 unsigned long ultimaVerificacaoRede = 0;
 const unsigned long INTERVALO_VERIF_REDE = 15000UL;
 
-// Protótipos das funções para evitar erros de ordem
+// Protótipos
 void atualizaLedsMotivo();
 
+// ---------------------- REDE ----------------------
 // Testa se há link físico (cabo conectado)
 bool temLinkFisico() {
   int status = Ethernet.linkStatus();
-  // 2 = LinkOFF, 1 = LinkON, 0 = Unknown
   if (status == 2) return false;
-  return true; 
+  return true;
 }
 
 // Testa se o SERVIDOR responde
@@ -167,32 +171,24 @@ void aplicaEstadoLedRun() {
   }
 }
 
-// Chamado a cada clique no botão RUN
 void cicloLedRun() {
   estadoLedRun++;
   if (estadoLedRun > 2)
     estadoLedRun = 0;
 
   aplicaEstadoLedRun();
-
-  // Máquina rodando somente quando LED VERDE (estado 0)
   maquinaRodando = (estadoLedRun == 0);
-
-  // Se entrou no estado 2 (OFF), os leds de motivo apagarão agora.
   atualizaLedsMotivo();
 }
 
 // ---------------------- LED MOTIVOS ----------------------
 void atualizaLedsMotivo() {
-  // Se o painel principal estiver desligado (estado 2), NADA acende.
   if (estadoLedRun == 2) {
     digitalWrite(LED_SETUP, DESLIGADO);
     digitalWrite(LED_MAT,   DESLIGADO);
     digitalWrite(LED_MAN,   DESLIGADO);
-    return; 
+    return;
   }
-
-  // Se o painel estiver ligado (Verde ou Vermelho), segue lógica normal:
   bool parado = !maquinaRodando;
 
   digitalWrite(LED_SETUP, latchSETUP ? LIGADO : DESLIGADO);
@@ -218,11 +214,9 @@ void setMotivoExclusivo(const char* nome) {
   else {
     motivo = "NONE";
   }
-
   atualizaLedsMotivo();
 }
 
-// Helper: calcula motivo atual a partir dos latches
 String getMotivoAtual() {
   if (latchSETUP)   return "SETUP";
   if (latchMAT)     return "MATERIAL";
@@ -230,12 +224,62 @@ String getMotivoAtual() {
   return "NONE";
 }
 
+// ---------------------- HORA VIA NTP → "YYYY-MM-DD HH:MM:SS" ----------------------
+String getDateTimeNTP() {
+  unsigned long epoch = timeClient.getEpochTime(); // já vem com offset -10800 aplicado
+
+  if (epoch == 0) {
+    return "1970-01-01 00:00:00";
+  }
+
+  unsigned long raw = epoch;
+
+  int ss = raw % 60;
+  raw /= 60;
+  int mm = raw % 60;
+  raw /= 60;
+  int hh = raw % 24;
+
+  unsigned long days = epoch / 86400; // segundos por dia
+
+  int year = 1970;
+  while (true) {
+    bool leap = (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0));
+    unsigned long daysInYear = leap ? 366 : 365;
+    if (days >= daysInYear) {
+      days -= daysInYear;
+      year++;
+    } else {
+      break;
+    }
+  }
+
+  int monthLengths[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
+  bool leap = (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0));
+  if (leap) monthLengths[1] = 29;
+
+  int month = 0;
+  while (days >= (unsigned long)monthLengths[month]) {
+    days -= monthLengths[month];
+    month++;
+  }
+  int day = days + 1;
+
+  char buffer[25];
+  sprintf(buffer, "%04d-%02d-%02d %02d:%02d:%02d",
+          year, month + 1, day, hh, mm, ss);
+
+  return String(buffer);
+}
+
 // ---------------------- MONTAR JSON DO EVENTO ----------------------
 String montaJSON(const char* tipo) {
   String json = "{";
-
-  // Identificador da máquina (pode ser "Máquina 01", "EXT-01", etc)
   json += "\"machine\":\"Máquina 01\"";
+
+  json += ",\"data_hora\":\"";
+  json += getDateTimeNTP();  
+  json += "\"";
 
   json += ",\"ts_ms\":";
   json += String(millis());
@@ -249,20 +293,17 @@ String montaJSON(const char* tipo) {
   json += "\"";
 
   json += ",\"estadoLed\":";
-  json += String(estadoLedRun);   // 0=verde, 1=vermelho, 2=off
+  json += String(estadoLedRun);
 
-  // Flag de parada (1 = parado, 0 = rodando)
   json += ",\"parada\":";
   json += (maquinaRodando ? "0" : "1");
 
-  // Motivo atual (SETUP / MATERIAL / MANUTENCAO / NONE)
   String motivoAtual = getMotivoAtual();
   json += ",\"motivo\":\"";
   json += motivoAtual;
   json += "\"";
 
   json += "}";
-
   return json;
 }
 
@@ -273,6 +314,9 @@ void logEventoHttp(const char* tipo) {
     Serial.println(tipo);
     return;
   }
+
+  // Atualiza a hora antes de enviar
+  timeClient.update();
 
   String payload = montaJSON(tipo);
   Serial.print(F("Enviando: "));
@@ -297,6 +341,7 @@ void logEventoHttp(const char* tipo) {
     while (client.connected() && millis() - tstart < 500) {
       while (client.available()) {
         char c = client.read();
+        // descarta resposta
       }
     }
     client.stop();
@@ -321,6 +366,7 @@ void setup() {
   pinMode(LED_RUN_G, OUTPUT);
   pinMode(LED_STOP_R,OUTPUT);
 
+  // COMEÇA TUDO DESLIGADO ✅
   digitalWrite(LED_SETUP, DESLIGADO);
   digitalWrite(LED_MAT,   DESLIGADO);
   digitalWrite(LED_MAN,   DESLIGADO);
@@ -332,15 +378,20 @@ void setup() {
 
   verificaRede();
 
-  estadoLedRun = 2; // Começa desligado
+  timeClient.begin();
+  timeClient.update();   // primeira sincronização
+
+  estadoLedRun   = 2;    // desligado
   maquinaRodando = false;
-  motivo = "NONE";
+  motivo         = "NONE";
 
   logEventoHttp("BOOT");
 }
 
 // ---------------------- LOOP ----------------------
 void loop() {
+  // Mantém hora atualizada
+  timeClient.update();
 
   // Verifica rede periodicamente
   if (millis() - ultimaVerificacaoRede > INTERVALO_VERIF_REDE) {
@@ -348,7 +399,7 @@ void loop() {
     verificaRede();
   }
 
-  // BOTÃO RUN: Ciclo Verde -> Vermelho -> Desligado
+  // BOTÃO RUN
   if (pressedEdgeNB(BTN_RUN, lastRUN, tRUN, lockRUN)) {
     cicloLedRun();
     logEventoHttp("RUN_CYCLE");

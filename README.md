@@ -1,36 +1,186 @@
-# React Dashboard (Máquina 01)
+📊 Maroni IoT – Sistema de Monitoramento Industrial em Tempo Real
 
-Este projeto é uma conversão do seu dashboard atual (HTML/CSS/JS) para React usando Vite.
+Sistema completo que integra Arduino + Flask + PostgreSQL + React Dashboard para monitorar funcionamento das máquinas, paradas automáticas/manuais e indicadores industriais.
 
-Principais pontos:
+🏗 Arquitetura do Sistema
+┌───────────────────────────┐      HTTP POST       ┌──────────────────────────┐
+│      Arduino + W5100      │ ───────────────────→ │        Flask API         │
+│  NTP • Botões • LEDs RUN  │                      │   /log • /api/data       │
+└───────────────────────────┘                      └─────────────┬────────────┘
+                                                                │ SQL
+                                                                ▼
+                                                    ┌──────────────────────────┐
+                                                    │       PostgreSQL         │
+                                                    │     Tabela: paradas      │
+                                                    └─────────────┬────────────┘
+                                                                │ GET API
+                                                                ▼
+                                            ┌─────────────────────────────────────────┐
+                                            │          Dashboard React + Vite         │
+                                            │  Gráficos • Status • Histórico • Login  │
+                                            └─────────────────────────────────────────┘
 
-- Monitora somente uma máquina (por padrão: `Máquina 01`).
-- Consulta a API Flask em `/api/data` a cada 5 segundos.
-- Mantém o tema escuro e o estilo do `static/style.css` original (copiado em `src/styles.css`).
+✨ Funcionalidades Principais
+🟢 Arduino (Automação)
 
-Assunções sobre a API `/api/data`:
+Controle de LEDs:
 
-- Pode retornar um array de paradas ou um objeto `{ stops: [...] }`.
-- Cada parada é um objeto com pelo menos: `{ id?, machine, reason, duration_minutes? | duration?, start_time? | start?, end_time? }`.
+Verde → máquina em funcionamento
 
-Como rodar (Windows PowerShell):
+Vermelho → parada
 
-1. Instale dependências
+Cinza/Off → desligada
 
-```powershell
-cd "c:\Users\wilso\Desktop\front_end\react-dashboard"
+Botões de motivo:
+
+Setup
+
+Falta de Material
+
+Manutenção
+
+Almoço/Intervalo
+
+Sem motivo
+
+Envio de logs para API
+
+Sincronização NTP (horário real)
+
+🔥 Flask Backend
+
+Registro automático de paradas
+
+Fechamento automático quando máquina volta a rodar
+
+Atualização de motivo em tempo real
+
+Paradas manuais com duração
+
+Login, sessão e cadastro de usuários
+
+Endpoint universal /api/data para o dashboard
+
+📈 Dashboard React (Vite)
+
+Visual profissional modo escuro
+
+Cards:
+
+Máquinas Ativas
+
+Máquinas Inativas
+
+Tempo total de parada
+
+Motivo mais recorrente
+
+Gráficos:
+
+Pizza (motivos)
+
+Barras (downtime por máquina)
+
+Histórico das últimas paradas
+
+Tela de login integrada
+
+🗄 Estrutura de Diretórios
+react-dashboard/
+│
+├── app.py
+├── criar_admin.py
+├── requirements.txt
+│
+├── src/
+│   ├── App.jsx
+│   ├── main.jsx
+│   ├── utils/
+│   │      └── api.js
+│   ├── components/
+│   │      ├── Login.jsx
+│   │      ├── Header.jsx
+│   │      ├── Cards.jsx
+│   │      ├── Charts.jsx
+│   │      ├── HistoryTable.jsx
+│   │      ├── StopForm.jsx
+│   │      └── Footer.jsx
+│   └── assets/
+│
+├── cod arduino/
+│      └── projetoarduino.ino
+│
+└── README.md
+
+🧰 Instalação e Execução
+1️⃣ Instalar dependências do React
 npm install
-```
 
-2. Execute o servidor de desenvolvimento (Vite):
+2️⃣ Iniciar o backend Flask
+py app.py
 
-```powershell
+
+Backend rodará em:
+
+http://localhost:5000
+
+3️⃣ Iniciar o frontend React
 npm run dev
-```
 
-O `vite` está configurado para fazer proxy de `/api` para `http://localhost:5000` (Flask padrão). Se seu Flask roda em outra porta, atualize `vite.config.js`.
 
-Notas e próximos passos:
+Dashboard disponível em:
 
-- Se sua API usar outro formato de campo (por exemplo `duration` em segundos), ajuste `Cards.jsx`, `HistoryTable.jsx` e `Charts.jsx` para converter corretamente.
-- Podemos adicionar testes e tipagem (TypeScript) se desejar.
+http://localhost:5174
+
+🛠 Configuração do Arduino
+
+O Arduino envia logs neste formato:
+
+{
+  "machine": "Máquina 01",
+  "estadoLed": 1,
+  "tipo": "MOTIVO",
+  "motivo": "MANUTENCAO",
+  "data_hora": "2025-11-27 15:22:41"
+}
+
+Campo	Descrição
+estadoLed	0=Funcionando, 1=Parada, 2=Desligada
+motivo	Setup, Material, Manutencao, Almoco, Sem_Motivo
+tipo	MOTIVO / ESTADO
+📡 Principais Endpoints
+POST /log
+
+Recebe logs do Arduino.
+
+GET /api/data
+
+Retorna todas as informações para o dashboard (status, gráficos, histórico).
+
+GET /ultimos?limit=20
+
+Retorna últimas paradas.
+
+POST /api/register_stop
+
+Registra parada manual.
+
+POST /api/login
+
+Autentica usuário.
+
+🧪 Tecnologias Utilizadas
+Área	Tecnologia
+Backend	Python, Flask, psycopg2
+Frontend	React, Vite, Styled-components
+Banco	PostgreSQL
+Hardware	Arduino UNO + Shield W5100
+Infra	HTTP REST, JSON, CORS
+👨‍💻 Autor
+Douglas da Silva Lobato
+
+Analista de TI • Full-Stack Developer • IoT Industrial
+
+⭐ Gostou do projeto?
+
+Deixe uma ⭐ no repositório para fortalecer o projeto!

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import styled from "styled-components";
 
 const HeaderContainer = styled.header`
@@ -17,8 +17,7 @@ const HeaderInfo = styled.div`
   flex: 1;
 `;
 
-// Centraliza o título horizontalmente usando transform e left:50%
-// Isso garante centralização precisa mesmo com elementos à esquerda/direita
+// Título centralizado
 const CenteredTitle = styled.div`
   position: absolute;
   left: 50%;
@@ -44,6 +43,23 @@ const UserInfo = styled.div`
   margin-top: 4px;
 `;
 
+const StatusText = styled.div`
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+`;
+
+const StatusDot = styled.span`
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  background: ${(props) => (props.$online ? "#29cc97" : "#f12b2c")};
+`;
+
 const ButtonGroup = styled.div`
   display: flex;
   gap: 8px;
@@ -66,6 +82,9 @@ const Button = styled.button`
 `;
 
 export default function Header({ username, setIsLoggedIn, setShowStopForm }) {
+  const [online, setOnline] = useState(true);
+  const [lastCheck, setLastCheck] = useState(null);
+
   const logout = async () => {
     try {
       const API_BASE = import.meta.env.VITE_API_URL || "";
@@ -79,15 +98,50 @@ export default function Header({ username, setIsLoggedIn, setShowStopForm }) {
     if (setIsLoggedIn) setIsLoggedIn(false);
   };
 
+  useEffect(() => {
+    const API_BASE = import.meta.env.VITE_API_URL || "";
+
+    const checkStatus = async () => {
+      try {
+        await fetch(`${API_BASE}/api/data`, {
+          method: "GET",
+          credentials: "include",
+        });
+        setOnline(true);
+      } catch (e) {
+        setOnline(false);
+      } finally {
+        setLastCheck(new Date());
+      }
+    };
+
+    checkStatus();
+    const interval = setInterval(checkStatus, 30000); // checa a cada 30s
+
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <HeaderContainer>
       <HeaderInfo>
         <UserInfo>Logado como: {username || "-"}</UserInfo>
+        <StatusText>
+          <StatusDot $online={online} />
+          {online ? "Servidor online" : "Servidor offline"}
+          {lastCheck && (
+            <span>
+              • Atualizado às{" "}
+              {lastCheck.toLocaleTimeString("pt-BR", { hour12: false })}
+            </span>
+          )}
+        </StatusText>
       </HeaderInfo>
+
       <CenteredTitle>
         <h1>Indústria Maroni</h1>
         <h2>Monitoramento I4.0</h2>
       </CenteredTitle>
+
       <ButtonGroup>
         <Button
           $primary
