@@ -1,0 +1,76 @@
+import React from "react";
+import styled from "styled-components";
+
+const HeaderContainer = styled.header`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  background: var(--card-bg);
+  border-radius: 4px;
+  margin-bottom: 16px;
+`;
+
+const HeaderInfo = styled.div`
+  h1 {
+    margin: 0;
+    font-size: 18px;
+    color: var(--text-primary);
+  }
+`;
+
+const UserInfo = styled.div`
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+`;
+
+const ButtonGroup = styled.div`
+  display: flex;
+  gap: 8px;
+`;
+
+const Button = styled.button`
+  padding: 8px 12px;
+  border-radius: 4px;
+  border: 1px solid ${props => props.$primary ? 'var(--accent)' : '#2b2c33'};
+  background: ${props => props.$primary ? 'var(--accent)' : 'transparent'};
+  color: ${props => props.$primary ? '#fff' : 'var(--text-secondary)'};
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: var(--accent);
+    color: ${props => props.$primary ? '#fff' : 'var(--accent)'};
+  }
+`;
+
+export default function Header({ username, setIsLoggedIn, setShowStopForm }) {
+  const logout = async () => {
+    try {
+      await fetch("/api/logout", { method: "POST", credentials: "include" });
+    } catch (e) {
+      // ignore
+    }
+    if (setIsLoggedIn) setIsLoggedIn(false);
+  };
+
+  return (
+    <HeaderContainer>
+      <HeaderInfo>
+        <h1>Dashboard - Registro de Paradas</h1>
+        <UserInfo>Logado como: {username || "-"}</UserInfo>
+      </HeaderInfo>
+      <ButtonGroup>
+        <Button $primary onClick={() => setShowStopForm && setShowStopForm(true)}>
+          Registrar Parada
+        </Button>
+        <Button onClick={logout}>
+          Sair
+        </Button>
+      </ButtonGroup>
+    </HeaderContainer>
+  );
+}
