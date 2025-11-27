@@ -1,186 +1,168 @@
-📊 Maroni IoT – Sistema de Monitoramento Industrial em Tempo Real
+# 📊 Sistema de Monitoramento Industrial -- Maroni S/A
 
-Sistema completo que integra Arduino + Flask + PostgreSQL + React Dashboard para monitorar funcionamento das máquinas, paradas automáticas/manuais e indicadores industriais.
+### Arduino + Flask + React Dashboard
 
-🏗 Arquitetura do Sistema
-┌───────────────────────────┐      HTTP POST       ┌──────────────────────────┐
-│      Arduino + W5100      │ ───────────────────→ │        Flask API         │
-│  NTP • Botões • LEDs RUN  │                      │   /log • /api/data       │
-└───────────────────────────┘                      └─────────────┬────────────┘
-                                                                │ SQL
-                                                                ▼
-                                                    ┌──────────────────────────┐
-                                                    │       PostgreSQL         │
-                                                    │     Tabela: paradas      │
-                                                    └─────────────┬────────────┘
-                                                                │ GET API
-                                                                ▼
-                                            ┌─────────────────────────────────────────┐
-                                            │          Dashboard React + Vite         │
-                                            │  Gráficos • Status • Histórico • Login  │
-                                            └─────────────────────────────────────────┘
+![Status](https://img.shields.io/badge/status-active-brightgreen)
+![Python](https://img.shields.io/badge/Python-3.10+-blue)
+![Flask](https://img.shields.io/badge/Backend-Flask-red)
+![React](https://img.shields.io/badge/Frontend-React-blue)
+![Arduino](https://img.shields.io/badge/Arduino-Ethernet%20Shield-orange)
+![PostgreSQL](https://img.shields.io/badge/DB-PostgreSQL-336791)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-✨ Funcionalidades Principais
-🟢 Arduino (Automação)
+------------------------------------------------------------------------
 
-Controle de LEDs:
+## 📌 Sobre o Projeto
 
-Verde → máquina em funcionamento
+Projeto completo utilizado para monitoramento de **paradas de máquinas
+industriais** em tempo real na **Indústria Maroni S/A**, integrando:
 
-Vermelho → parada
+-   🟦 **Arduino + Ethernet Shield** com envio de logs via HTTP\
+-   🐍 **Backend Python/Flask** com lógica de abertura/fechamento
+    automático de paradas\
+-   🗄️ **Banco PostgreSQL** (tabela única: `paradas`)\
+-   ⚛️ **Frontend React Dashboard** com gráficos, histórico e status
+    atual
 
-Cinza/Off → desligada
+O sistema detecta **paradas automáticas**, registra motivos enviados
+pelo Arduino e disponibiliza tudo em um **dashboard em tempo real**.
 
-Botões de motivo:
+------------------------------------------------------------------------
 
-Setup
+## ✨ Funcionalidades
 
-Falta de Material
+### 🔌 Arduino (Automação)
 
-Manutenção
+-   Envio de logs HTTP (`POST /log`)
+-   Hora via NTP (sem RTC físico)
+-   Estados:
+    -   🟢 Rodando\
+    -   🔴 Parada\
+    -   ⚪ Desligado\
+-   Seleção de motivos:
+    -   Setup\
+    -   Falta de Material\
+    -   Manutenção\
+    -   Almoço/Intervalo\
+    -   Sem motivo
 
-Almoço/Intervalo
+### 🖥️ Backend Flask
 
-Sem motivo
+-   Registro automático de paradas
+-   Fechamento automático ao voltar para RUN
+-   API REST para dashboard
+-   Cadastro/Login de usuários
+-   Registro de paradas manuais
 
-Envio de logs para API
+### 💻 React Dashboard
 
-Sincronização NTP (horário real)
+-   Status das máquinas
+-   Gráficos (pizza, barras)
+-   Histórico de paradas
+-   Últimas 10 paradas
+-   Registro manual
 
-🔥 Flask Backend
+------------------------------------------------------------------------
 
-Registro automático de paradas
+## 📂 Estrutura do Projeto
 
-Fechamento automático quando máquina volta a rodar
+    react-dashboard/
+    ├── app.py
+    ├── requirements.txt
+    ├── cria_admin.py
+    ├── atualiza_paradas.py
+    ├── src/
+    │   ├── App.jsx
+    │   ├── main.jsx
+    │   └── components/
+    │        ├── Cards.jsx
+    │        ├── Charts.jsx
+    │        ├── Footer.jsx
+    │        ├── Header.jsx
+    │        ├── HistoryTable.jsx
+    │        ├── Login.jsx
+    │        ├── RecoveryModal.jsx
+    │        ├── StopForm.jsx
+    └── cod arduino/
+         └── projetoarduino/
+             └── registro_paradas.ino
 
-Atualização de motivo em tempo real
+------------------------------------------------------------------------
 
-Paradas manuais com duração
+## 🚀 Como Rodar o Sistema
 
-Login, sessão e cadastro de usuários
+### 1️⃣ Backend -- Instalar dependências
 
-Endpoint universal /api/data para o dashboard
+    pip install -r requirements.txt
 
-📈 Dashboard React (Vite)
+### 2️⃣ Iniciar o Backend
 
-Visual profissional modo escuro
+    py app.py
 
-Cards:
+Servidor Flask rodará em:
 
-Máquinas Ativas
+    http://127.0.0.1:5000
+    http://192.168.1.129:5000
 
-Máquinas Inativas
+------------------------------------------------------------------------
 
-Tempo total de parada
+### 3️⃣ Frontend -- Instalar dependências
 
-Motivo mais recorrente
+    npm install
 
-Gráficos:
+### 4️⃣ Rodar o Dashboard
 
-Pizza (motivos)
+    npm run dev
 
-Barras (downtime por máquina)
+Acesse:
 
-Histórico das últimas paradas
+    http://localhost:5174/
 
-Tela de login integrada
+------------------------------------------------------------------------
 
-🗄 Estrutura de Diretórios
-react-dashboard/
-│
-├── app.py
-├── criar_admin.py
-├── requirements.txt
-│
-├── src/
-│   ├── App.jsx
-│   ├── main.jsx
-│   ├── utils/
-│   │      └── api.js
-│   ├── components/
-│   │      ├── Login.jsx
-│   │      ├── Header.jsx
-│   │      ├── Cards.jsx
-│   │      ├── Charts.jsx
-│   │      ├── HistoryTable.jsx
-│   │      ├── StopForm.jsx
-│   │      └── Footer.jsx
-│   └── assets/
-│
-├── cod arduino/
-│      └── projetoarduino.ino
-│
-└── README.md
+## 🧪 Testando o endpoint do Arduino
 
-🧰 Instalação e Execução
-1️⃣ Instalar dependências do React
-npm install
-
-2️⃣ Iniciar o backend Flask
-py app.py
-
-
-Backend rodará em:
-
-http://localhost:5000
-
-3️⃣ Iniciar o frontend React
-npm run dev
-
-
-Dashboard disponível em:
-
-http://localhost:5174
-
-🛠 Configuração do Arduino
-
-O Arduino envia logs neste formato:
-
+``` json
+POST http://192.168.1.129:5000/log
 {
   "machine": "Máquina 01",
-  "estadoLed": 1,
+  "data_hora": "2025-11-27 14:15:00",
   "tipo": "MOTIVO",
-  "motivo": "MANUTENCAO",
-  "data_hora": "2025-11-27 15:22:41"
+  "estadoLed": 1,
+  "motivo": "MATERIAL"
 }
+```
 
-Campo	Descrição
-estadoLed	0=Funcionando, 1=Parada, 2=Desligada
-motivo	Setup, Material, Manutencao, Almoco, Sem_Motivo
-tipo	MOTIVO / ESTADO
-📡 Principais Endpoints
-POST /log
+------------------------------------------------------------------------
 
-Recebe logs do Arduino.
+## 🗄️ Estrutura da Tabela PostgreSQL
 
-GET /api/data
+``` sql
+CREATE TABLE paradas (
+    id SERIAL PRIMARY KEY,
+    machine VARCHAR(50),
+    reason VARCHAR(100),
+    origem VARCHAR(20),
+    start_time TIMESTAMP NOT NULL,
+    end_time TIMESTAMP,
+    duration_minutes NUMERIC(10,2),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+```
 
-Retorna todas as informações para o dashboard (status, gráficos, histórico).
+------------------------------------------------------------------------
 
-GET /ultimos?limit=20
+## 👨‍🔧 Autor
 
-Retorna últimas paradas.
+**Douglas da Silva Lobato**\
+Analista de TI -- Indústria Maroni S/A
 
-POST /api/register_stop
+------------------------------------------------------------------------
 
-Registra parada manual.
+## 📝 Licença
 
-POST /api/login
+MIT License
 
-Autentica usuário.
+------------------------------------------------------------------------
 
-🧪 Tecnologias Utilizadas
-Área	Tecnologia
-Backend	Python, Flask, psycopg2
-Frontend	React, Vite, Styled-components
-Banco	PostgreSQL
-Hardware	Arduino UNO + Shield W5100
-Infra	HTTP REST, JSON, CORS
-👨‍💻 Autor
-Douglas da Silva Lobato
-
-Analista de TI • Full-Stack Developer • IoT Industrial
-
-⭐ Gostou do projeto?
-
-Deixe uma ⭐ no repositório para fortalecer o projeto!
+## ⭐ Se este projeto te ajudou, deixe uma estrela!
